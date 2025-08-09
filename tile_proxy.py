@@ -105,19 +105,35 @@ def test_known_lks92_tile(level, tile_x, tile_y):
     """Test function to verify LKS-92 tile coordinate calculations"""
     resolution = RESOLUTIONS[level]
     
-    # Calculate LKS-92 coordinates for this tile
+    # Calculate LKS-92 coordinates for this tile (northwest corner)
     lks92_x = TILE_ORIGIN["x"] + (tile_x * resolution * 512)
     lks92_y = TILE_ORIGIN["y"] - (tile_y * resolution * 512)
     
-    # Convert to WGS84
-    wgs84_lon, wgs84_lat = transformer_to_wgs84.transform(lks92_x, lks92_y)
+    # Calculate tile bounds in LKS-92
+    tile_size_meters = resolution * 512
+    lks92_bounds = {
+        "xmin": lks92_x,
+        "ymin": lks92_y - tile_size_meters,
+        "xmax": lks92_x + tile_size_meters,
+        "ymax": lks92_y
+    }
+    
+    # Convert corners to WGS84
+    nw_lon, nw_lat = transformer_to_wgs84.transform(lks92_bounds["xmin"], lks92_bounds["ymax"])
+    se_lon, se_lat = transformer_to_wgs84.transform(lks92_bounds["xmax"], lks92_bounds["ymin"])
+    center_lon, center_lat = transformer_to_wgs84.transform(
+        (lks92_bounds["xmin"] + lks92_bounds["xmax"]) / 2,
+        (lks92_bounds["ymin"] + lks92_bounds["ymax"]) / 2
+    )
     
     logger.info(f"LKS-92 tile {level}/{tile_x}/{tile_y}:")
-    logger.info(f"  LKS-92 coords: {lks92_x:.2f}, {lks92_y:.2f}")
-    logger.info(f"  WGS84 coords: {wgs84_lat:.6f}, {wgs84_lon:.6f}")
+    logger.info(f"  LKS-92 bounds: {lks92_bounds}")
+    logger.info(f"  WGS84 NW: {nw_lat:.6f}, {nw_lon:.6f}")
+    logger.info(f"  WGS84 SE: {se_lat:.6f}, {se_lon:.6f}")
+    logger.info(f"  WGS84 Center: {center_lat:.6f}, {center_lon:.6f}")
     logger.info(f"  Resolution: {resolution}")
     
-    return wgs84_lat, wgs84_lon
+    return center_lat, center_lon
 
 def wgs84_to_lks92_tile(x, y, z):
     """Convert WGS84 tile coordinates to LKS-92 tile coordinates"""
