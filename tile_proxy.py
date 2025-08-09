@@ -310,29 +310,63 @@ def get_tile(z, x, y):
                     wgs84_nw_x, wgs84_nw_y = transformer_to_lks92.transform(wgs84_bounds["west"], wgs84_bounds["north"])
                     wgs84_se_x, wgs84_se_y = transformer_to_lks92.transform(wgs84_bounds["east"], wgs84_bounds["south"])
                     
+                    logger.info(f"WGS84 tile bounds in LKS-92: NW({wgs84_nw_x:.2f}, {wgs84_nw_y:.2f}) SE({wgs84_se_x:.2f}, {wgs84_se_y:.2f})")
+                    logger.info(f"LKS-92 tile bounds: {lks92_tile_bounds}")
+                    
+                    # Calculate the intersection of WGS84 tile area with LKS-92 tile area
+                    intersect_xmin = max(wgs84_nw_x, lks92_tile_bounds["xmin"])
+                    intersect_xmax = min(wgs84_se_x, lks92_tile_bounds["xmax"])
+                    intersect_ymin = max(wgs84_se_y, lks92_tile_bounds["ymin"])
+                    intersect_ymax = min(wgs84_nw_y, lks92_tile_bounds["ymax"])
+                    
+                    # Check if there's actually an intersection
+                    if intersect_xmin >= intersect_xmax or intersect_ymin >= intersect_ymax:
+                        logger.warning("No intersection between WGS84 tile and LKS-92 tile")
+                        # Return empty/transparent tile
+                        empty_img = Image.new('RGBA', (256, 256), (0, 0, 0, 0))
+                        output = io.BytesIO()
+                        empty_img.save(output, format='PNG')
+                        output.seek(0)
+                        return Response(
+                            output.getvalue(),
+                            mimetype='image/png',
+                            headers={
+                                'Cache-Control': 'public, max-age=3600',
+                                'Access-Control-Allow-Origin': '*'
+                            }
+                        )
+                    
                     # Calculate the relative position within the LKS-92 tile (0.0 to 1.0)
                     lks92_width = lks92_tile_bounds["xmax"] - lks92_tile_bounds["xmin"]
                     lks92_height = lks92_tile_bounds["ymax"] - lks92_tile_bounds["ymin"]
                     
-                    # Calculate crop coordinates (in pixels, 0-512)
-                    left = max(0, int(((wgs84_nw_x - lks92_tile_bounds["xmin"]) / lks92_width) * 512))
-                    right = min(512, int(((wgs84_se_x - lks92_tile_bounds["xmin"]) / lks92_width) * 512))
-                    top = max(0, int(((lks92_tile_bounds["ymax"] - wgs84_nw_y) / lks92_height) * 512))
-                    bottom = min(512, int(((lks92_tile_bounds["ymax"] - wgs84_se_y) / lks92_height) * 512))
+                    # Calculate crop coordinates in pixels (0-512) based on intersection
+                    left = int(((intersect_xmin - lks92_tile_bounds["xmin"]) / lks92_width) * 512)
+                    right = int(((intersect_xmax - lks92_tile_bounds["xmin"]) / lks92_width) * 512)
+                    top = int(((lks92_tile_bounds["ymax"] - intersect_ymax) / lks92_height) * 512)
+                    bottom = int(((lks92_tile_bounds["ymax"] - intersect_ymin) / lks92_height) * 512)
                     
+                    # Ensure coordinates are within bounds
+                    left = max(0, min(511, left))
+                    right = max(1, min(512, right))
+                    top = max(0, min(511, top))
+                    bottom = max(1, min(512, bottom))
+                    
+                    logger.info(f"Intersection area: ({intersect_xmin:.2f}, {intersect_ymin:.2f}) to ({intersect_xmax:.2f}, {intersect_ymax:.2f})")
                     logger.info(f"Crop coordinates: left={left}, top={top}, right={right}, bottom={bottom}")
                     
                     # Open the image and crop
                     img = Image.open(io.BytesIO(response.content))
                     cropped_img = img.crop((left, top, right, bottom))
                     
-                    # Resize to 256x256 if the crop isn't exactly that size
-                    if cropped_img.size != (256, 256):
-                        cropped_img = cropped_img.resize((256, 256), Image.LANCZOS)
+                    logger.info(f"Cropped image size: {cropped_img.size}")
+                    
+                    # Always resize to 256x256
+                    resized_img = cropped_img.resize((256, 256), Image.LANCZOS)
                     
                     # Save to bytes
                     output = io.BytesIO()
-                    cropped_img.save(output, format='PNG')
+                    resized_img.save(output, format='PNG')
                     output.seek(0)
                     
                     return Response(
