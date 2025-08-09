@@ -101,6 +101,24 @@ def get_tile_bounds_wgs84(x, y, z):
         "south": lat_se
     }
 
+def test_known_lks92_tile(level, tile_x, tile_y):
+    """Test function to verify LKS-92 tile coordinate calculations"""
+    resolution = RESOLUTIONS[level]
+    
+    # Calculate LKS-92 coordinates for this tile
+    lks92_x = TILE_ORIGIN["x"] + (tile_x * resolution * 512)
+    lks92_y = TILE_ORIGIN["y"] - (tile_y * resolution * 512)
+    
+    # Convert to WGS84
+    wgs84_lon, wgs84_lat = transformer_to_wgs84.transform(lks92_x, lks92_y)
+    
+    logger.info(f"LKS-92 tile {level}/{tile_x}/{tile_y}:")
+    logger.info(f"  LKS-92 coords: {lks92_x:.2f}, {lks92_y:.2f}")
+    logger.info(f"  WGS84 coords: {wgs84_lat:.6f}, {wgs84_lon:.6f}")
+    logger.info(f"  Resolution: {resolution}")
+    
+    return wgs84_lat, wgs84_lon
+
 def wgs84_to_lks92_tile(x, y, z):
     """Convert WGS84 tile coordinates to LKS-92 tile coordinates"""
     # Get WGS84 bounds of the requested tile
@@ -110,15 +128,22 @@ def wgs84_to_lks92_tile(x, y, z):
     nw_x, nw_y = transformer_to_lks92.transform(bounds["west"], bounds["north"])
     se_x, se_y = transformer_to_lks92.transform(bounds["east"], bounds["south"])
     
+    # Debug logging
+    logger.info(f"WGS84 tile {z}/{x}/{y} bounds: {bounds}")
+    logger.info(f"LKS-92 bounds: NW({nw_x:.2f}, {nw_y:.2f}) SE({se_x:.2f}, {se_y:.2f})")
+    
     # Check if tile intersects with LKS-92 extent
     if (se_x < LKS92_EXTENT["xmin"] or nw_x > LKS92_EXTENT["xmax"] or 
         se_y < LKS92_EXTENT["ymin"] or nw_y > LKS92_EXTENT["ymax"]):
+        logger.info(f"Tile outside LKS-92 extent")
         return None
     
     # Find the best matching zoom level based on resolution
     # Calculate the resolution of the WGS84 tile in LKS-92 coordinates
     tile_width_lks92 = abs(se_x - nw_x)
     tile_resolution = tile_width_lks92 / 256  # WGS84 tiles are 256x256
+    
+    logger.info(f"Calculated tile resolution: {tile_resolution:.6f}")
     
     # Find closest resolution level
     best_level = 0
@@ -129,6 +154,8 @@ def wgs84_to_lks92_tile(x, y, z):
             min_diff = diff
             best_level = i
     
+    logger.info(f"Best matching level: {best_level} (resolution: {RESOLUTIONS[best_level]:.6f})")
+    
     # Calculate LKS-92 tile coordinates
     resolution = RESOLUTIONS[best_level]
     
@@ -137,9 +164,13 @@ def wgs84_to_lks92_tile(x, y, z):
     center_lat = (bounds["north"] + bounds["south"]) / 2
     center_x, center_y = transformer_to_lks92.transform(center_lon, center_lat)
     
+    logger.info(f"Center point - WGS84: ({center_lat:.6f}, {center_lon:.6f}) LKS-92: ({center_x:.2f}, {center_y:.2f})")
+    
     # Calculate tile indices (LKS-92 tiles are 512x512)
     tile_x = int((center_x - TILE_ORIGIN["x"]) / (resolution * 512))
     tile_y = int((TILE_ORIGIN["y"] - center_y) / (resolution * 512))
+    
+    logger.info(f"Calculated LKS-92 tile: {best_level}/{tile_x}/{tile_y}")
     
     # Validate tile coordinates are within service coverage
     if best_level in VALID_TILE_RANGES:
@@ -199,6 +230,20 @@ def get_tile(z, x, y):
     except Exception as e:
         logger.error(f"Error processing tile {z}/{x}/{y}: {str(e)}", exc_info=True)
         abort(500)
+
+@app.route('/test/<int:level>/<int:tile_x>/<int:tile_y>')
+def test_tile_coords(level, tile_x, tile_y):
+    """Test endpoint to verify tile coordinate calculations"""
+    try:
+        lat, lon = test_known_lks92_tile(level, tile_x, tile_y)
+        return {
+            "lks92_tile": f"{level}/{tile_x}/{tile_y}",
+            "wgs84_coords": {"lat": lat, "lon": lon},
+            "resolution": RESOLUTIONS[level],
+            "valid_range": VALID_TILE_RANGES.get(level, "Unknown")
+        }
+    except Exception as e:
+        return {"error": str(e)}, 500
 
 @app.route('/health')
 def health_check():
