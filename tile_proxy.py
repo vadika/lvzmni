@@ -9,6 +9,8 @@ import requests
 import logging
 from flask import Flask, Response, abort
 from pyproj import Transformer
+from PIL import Image
+import io
 
 app = Flask(__name__)
 
@@ -265,14 +267,38 @@ def get_tile(z, x, y):
         logger.info(f"ZMNI server response: {response.status_code}")
         
         if response.status_code == 200:
-            return Response(
-                response.content,
-                mimetype='image/png',
-                headers={
-                    'Cache-Control': 'public, max-age=3600',
-                    'Access-Control-Allow-Origin': '*'
-                }
-            )
+            # Resize 512x512 tile to 256x256
+            try:
+                # Open the image from response content
+                img = Image.open(io.BytesIO(response.content))
+                
+                # Resize to 256x256
+                resized_img = img.resize((256, 256), Image.LANCZOS)
+                
+                # Save to bytes
+                output = io.BytesIO()
+                resized_img.save(output, format='PNG')
+                output.seek(0)
+                
+                return Response(
+                    output.getvalue(),
+                    mimetype='image/png',
+                    headers={
+                        'Cache-Control': 'public, max-age=3600',
+                        'Access-Control-Allow-Origin': '*'
+                    }
+                )
+            except Exception as e:
+                logger.error(f"Error resizing tile: {str(e)}")
+                # Fall back to original image if resize fails
+                return Response(
+                    response.content,
+                    mimetype='image/png',
+                    headers={
+                        'Cache-Control': 'public, max-age=3600',
+                        'Access-Control-Allow-Origin': '*'
+                    }
+                )
         else:
             logger.error(f"ZMNI server returned {response.status_code} for {tile_url}")
             abort(response.status_code)
