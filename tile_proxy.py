@@ -183,12 +183,47 @@ def wgs84_to_lks92_tile(x, y, z):
         logger.info(f"Tile outside LKS-92 extent")
         return None
     
-    # Try each zoom level to find the best match
+    # Map WGS84 zoom level to appropriate LKS-92 level based on geographic scale
+    # WGS84 zoom levels roughly correspond to these scales at Latvia's latitude:
+    wgs84_to_lks92_zoom_mapping = {
+        0: 0,   # Very large scale
+        1: 0,
+        2: 0,
+        3: 1,
+        4: 1,
+        5: 2,
+        6: 2,
+        7: 3,
+        8: 4,
+        9: 5,
+        10: 6,
+        11: 7,
+        12: 8,
+        13: 9,
+        14: 10,
+        15: 11,
+        16: 12,
+        17: 13,
+        18: 13
+    }
+    
+    # Get the target LKS-92 level based on WGS84 zoom
+    target_level = wgs84_to_lks92_zoom_mapping.get(z, 13)  # Default to highest detail
+    
+    # Try the target level first, then nearby levels if needed
+    levels_to_try = [target_level]
+    
+    # Add nearby levels as fallbacks
+    for offset in [-1, 1, -2, 2, -3, 3]:
+        nearby_level = target_level + offset
+        if 0 <= nearby_level <= 13 and nearby_level not in levels_to_try:
+            levels_to_try.append(nearby_level)
+    
     best_level = None
     best_tile_x = None
     best_tile_y = None
     
-    for level in range(len(RESOLUTIONS)):
+    for level in levels_to_try:
         if level not in VALID_TILE_RANGES:
             continue
             
@@ -215,18 +250,13 @@ def wgs84_to_lks92_tile(x, y, z):
         if (tile_x >= ranges["x_min"] and tile_x <= ranges["x_max"] and
             tile_y >= ranges["y_min"] and tile_y <= ranges["y_max"]):
             
-            # Calculate the resolution this would represent
-            wgs84_width = abs(se_x - nw_x)
-            wgs84_resolution = wgs84_width / 256  # WGS84 tiles are 256x256
-            lks92_resolution = tile_width / 512   # LKS-92 tiles are 512x512
+            logger.info(f"Level {level}: tile={tile_x}/{tile_y} (target level: {target_level})")
             
-            logger.info(f"Level {level}: WGS84 res={wgs84_resolution:.6f}, LKS-92 res={lks92_resolution:.6f}, tile={tile_x}/{tile_y}")
-            
-            # Use the level that best matches the resolution
-            if best_level is None or abs(wgs84_resolution - lks92_resolution) < abs(wgs84_resolution - (extent_width / (VALID_TILE_RANGES[best_level]["x_max"] - VALID_TILE_RANGES[best_level]["x_min"] + 1)) / 512):
-                best_level = level
-                best_tile_x = tile_x
-                best_tile_y = tile_y
+            # Use the first valid level (prioritizing target level)
+            best_level = level
+            best_tile_x = tile_x
+            best_tile_y = tile_y
+            break
     
     if best_level is not None:
         logger.info(f"Selected LKS-92 tile: {best_level}/{best_tile_x}/{best_tile_y}")
@@ -313,6 +343,8 @@ def get_tile(z, x, y):
                             'Access-Control-Allow-Origin': '*'
                         }
                     )
+                else:
+                    logger.warning(f"Could not get LKS-92 tile bounds for level={level}, tile_x={tile_x}, tile_y={tile_y}")
                 
             except Exception as e:
                 logger.error(f"Error cropping tile: {str(e)}")
