@@ -17,7 +17,7 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 # ZMNI Map Server configuration
-BASE_URL = "https://lvmgeo.lvm.lv/proxy/D341478CE74F4F02B68607991448D499/CacheDinamic/ZMNI/MapServer/tile"
+BASE_URL = "https://lvmgeo.lvm.lv/arcgis/rest/services/CacheDinamic/ZMNI/MapServer/tile"
 TILE_SIZE = 256
 
 # Coordinate transformers
