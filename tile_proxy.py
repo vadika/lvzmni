@@ -293,7 +293,7 @@ def lks92_to_wgs84_tiles(level, tile_x, tile_y):
     wgs84_tiles = []
     
     # Check zoom levels that might contain this area
-    for z in range(1, 19):  # Check zoom levels 1-18
+    for z in range(8, 19):  # Check zoom levels 8-18 (reasonable range)
         # Calculate WGS84 tile coordinates for the corners
         nw_x, nw_y = deg2num(nw_lat, nw_lon, z)
         se_x, se_y = deg2num(se_lat, se_lon, z)
@@ -304,17 +304,18 @@ def lks92_to_wgs84_tiles(level, tile_x, tile_y):
         min_y = min(nw_y, se_y)
         max_y = max(nw_y, se_y)
         
+        # Limit the number of tiles to prevent excessive results
+        if (max_x - min_x + 1) * (max_y - min_y + 1) > 100:
+            continue
+        
         for x in range(min_x, max_x + 1):
             for y in range(min_y, max_y + 1):
-                # Check if this WGS84 tile would map back to our LKS-92 tile
-                result = wgs84_to_lks92_tile(x, y, z)
-                if result and result[0] == level and result[1] == tile_x and result[2] == tile_y:
-                    wgs84_tiles.append({
-                        "z": z,
-                        "x": x,
-                        "y": y,
-                        "url": f"http://localhost:8117/{z}/{x}/{y}.png"
-                    })
+                wgs84_tiles.append({
+                    "z": z,
+                    "x": x,
+                    "y": y,
+                    "url": f"http://localhost:8117/{z}/{x}/{y}.png"
+                })
     
     return wgs84_tiles
 
@@ -334,7 +335,7 @@ def test_tile_coords(level, tile_x, tile_y):
             tile_exists = False
             tile_status = f"Error: {str(e)}"
         
-        # Find corresponding WGS84 tiles
+        # Find corresponding WGS84 tiles (simplified to avoid recursion)
         wgs84_tiles = lks92_to_wgs84_tiles(level, tile_x, tile_y)
         
         return {
@@ -345,7 +346,7 @@ def test_tile_coords(level, tile_x, tile_y):
             "tile_exists": tile_exists,
             "tile_status": tile_status,
             "tile_url": tile_url,
-            "wgs84_tiles": wgs84_tiles
+            "wgs84_tiles": wgs84_tiles[:10]  # Limit to first 10 results
         }
     except Exception as e:
         return {"error": str(e)}, 500
