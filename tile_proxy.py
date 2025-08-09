@@ -159,23 +159,18 @@ def test_known_lks92_tile(level, tile_x, tile_y):
     
     return center_lat, center_lon
 
-def wgs84_to_lks92_tile(x, y, z):
-    """Convert WGS84 tile coordinates to LKS-92 tile coordinates"""
+def find_intersecting_lks92_tiles(x, y, z):
+    """Find all LKS-92 tiles that intersect with the WGS84 tile"""
     # Get WGS84 bounds of the requested tile
     bounds = get_tile_bounds_wgs84(x, y, z)
     
     # Transform corners to LKS-92
     nw_x, nw_y = transformer_to_lks92.transform(bounds["west"], bounds["north"])
     se_x, se_y = transformer_to_lks92.transform(bounds["east"], bounds["south"])
-    center_x, center_y = transformer_to_lks92.transform(
-        (bounds["west"] + bounds["east"]) / 2,
-        (bounds["north"] + bounds["south"]) / 2
-    )
     
     # Debug logging
     logger.info(f"WGS84 tile {z}/{x}/{y} bounds: {bounds}")
     logger.info(f"LKS-92 bounds: NW({nw_x:.2f}, {nw_y:.2f}) SE({se_x:.2f}, {se_y:.2f})")
-    logger.info(f"LKS-92 center: ({center_x:.2f}, {center_y:.2f})")
     
     # Check if tile intersects with LKS-92 extent
     if (se_x < LKS92_EXTENT["xmin"] or nw_x > LKS92_EXTENT["xmax"] or 
@@ -183,45 +178,20 @@ def wgs84_to_lks92_tile(x, y, z):
         logger.info(f"Tile outside LKS-92 extent")
         return None
     
-    # Map WGS84 zoom level to appropriate LKS-92 level based on geographic scale
-    # WGS84 zoom levels roughly correspond to these scales at Latvia's latitude:
+    # Map WGS84 zoom level to appropriate LKS-92 level
     wgs84_to_lks92_zoom_mapping = {
-        0: 0,   # Very large scale
-        1: 0,
-        2: 0,
-        3: 1,
-        4: 1,
-        5: 2,
-        6: 2,
-        7: 3,
-        8: 4,
-        9: 5,
-        10: 6,
-        11: 7,
-        12: 8,
-        13: 9,
-        14: 10,
-        15: 11,
-        16: 12,
-        17: 13,
-        18: 13
+        0: 0, 1: 0, 2: 0, 3: 1, 4: 1, 5: 2, 6: 2, 7: 3, 8: 4, 9: 5,
+        10: 6, 11: 7, 12: 8, 13: 9, 14: 10, 15: 11, 16: 12, 17: 13, 18: 13
     }
     
-    # Get the target LKS-92 level based on WGS84 zoom
-    target_level = wgs84_to_lks92_zoom_mapping.get(z, 13)  # Default to highest detail
+    target_level = wgs84_to_lks92_zoom_mapping.get(z, 13)
     
-    # Try the target level first, then nearby levels if needed
+    # Try the target level first, then nearby levels
     levels_to_try = [target_level]
-    
-    # Add nearby levels as fallbacks
-    for offset in [-1, 1, -2, 2, -3, 3]:
+    for offset in [-1, 1, -2, 2]:
         nearby_level = target_level + offset
         if 0 <= nearby_level <= 13 and nearby_level not in levels_to_try:
             levels_to_try.append(nearby_level)
-    
-    best_level = None
-    best_tile_x = None
-    best_tile_y = None
     
     for level in levels_to_try:
         if level not in VALID_TILE_RANGES:
@@ -239,31 +209,148 @@ def wgs84_to_lks92_tile(x, y, z):
         tile_width = extent_width / tiles_x
         tile_height = extent_height / tiles_y
         
-        # Calculate which tile contains the center point
-        x_offset = (center_x - LKS92_EXTENT["xmin"]) / tile_width
-        y_offset = (LKS92_EXTENT["ymax"] - center_y) / tile_height
+        # Find all tiles that intersect with the WGS84 area
+        min_tile_x = max(ranges["x_min"], ranges["x_min"] + int((nw_x - LKS92_EXTENT["xmin"]) / tile_width))
+        max_tile_x = min(ranges["x_max"], ranges["x_min"] + int((se_x - LKS92_EXTENT["xmin"]) / tile_width))
+        min_tile_y = max(ranges["y_min"], ranges["y_min"] + int((LKS92_EXTENT["ymax"] - nw_y) / tile_height))
+        max_tile_y = min(ranges["y_max"], ranges["y_min"] + int((LKS92_EXTENT["ymax"] - se_y) / tile_height))
         
-        tile_x = ranges["x_min"] + int(x_offset)
-        tile_y = ranges["y_min"] + int(y_offset)
+        intersecting_tiles = []
+        for tile_x in range(min_tile_x, max_tile_x + 1):
+            for tile_y in range(min_tile_y, max_tile_y + 1):
+                if (tile_x >= ranges["x_min"] and tile_x <= ranges["x_max"] and
+                    tile_y >= ranges["y_min"] and tile_y <= ranges["y_max"]):
+                    intersecting_tiles.append((level, tile_x, tile_y))
         
-        # Check if tile is within valid range
-        if (tile_x >= ranges["x_min"] and tile_x <= ranges["x_max"] and
-            tile_y >= ranges["y_min"] and tile_y <= ranges["y_max"]):
-            
-            logger.info(f"Level {level}: tile={tile_x}/{tile_y} (target level: {target_level})")
-            
-            # Use the first valid level (prioritizing target level)
-            best_level = level
-            best_tile_x = tile_x
-            best_tile_y = tile_y
-            break
+        if intersecting_tiles:
+            logger.info(f"Found {len(intersecting_tiles)} intersecting tiles at level {level}")
+            return {
+                'level': level,
+                'tiles': intersecting_tiles,
+                'wgs84_bounds': bounds,
+                'lks92_bounds': {'xmin': nw_x, 'ymin': se_y, 'xmax': se_x, 'ymax': nw_y}
+            }
     
-    if best_level is not None:
-        logger.info(f"Selected LKS-92 tile: {best_level}/{best_tile_x}/{best_tile_y}")
-        return best_level, best_tile_x, best_tile_y
-    
-    logger.warning(f"No suitable LKS-92 tile found for WGS84 tile {z}/{x}/{y}")
+    logger.warning(f"No suitable LKS-92 tiles found for WGS84 tile {z}/{x}/{y}")
     return None
+
+def wgs84_to_lks92_tile(x, y, z):
+    """Convert WGS84 tile coordinates to LKS-92 tile coordinates (legacy function)"""
+    result = find_intersecting_lks92_tiles(x, y, z)
+    if result and result['tiles']:
+        # Return the first tile for backward compatibility
+        level, tile_x, tile_y = result['tiles'][0]
+        return level, tile_x, tile_y
+    return None
+
+def composite_tiles_for_wgs84(x, y, z):
+    """Create a composite tile from multiple LKS-92 tiles for a WGS84 request"""
+    # Find all intersecting LKS-92 tiles
+    tile_info = find_intersecting_lks92_tiles(x, y, z)
+    if not tile_info:
+        return None
+    
+    level = tile_info['level']
+    tiles = tile_info['tiles']
+    wgs84_bounds = tile_info['wgs84_bounds']
+    lks92_bounds = tile_info['lks92_bounds']
+    
+    logger.info(f"Compositing {len(tiles)} tiles for WGS84 tile {z}/{x}/{y}")
+    
+    # Create a canvas large enough to hold all the tiles
+    # Calculate the total area we need to cover in LKS-92 coordinates
+    total_width = lks92_bounds['xmax'] - lks92_bounds['xmin']
+    total_height = lks92_bounds['ymax'] - lks92_bounds['ymin']
+    
+    # Calculate pixels per meter for this level
+    extent_width = LKS92_EXTENT["xmax"] - LKS92_EXTENT["xmin"]
+    extent_height = LKS92_EXTENT["ymax"] - LKS92_EXTENT["ymin"]
+    ranges = VALID_TILE_RANGES[level]
+    tiles_x = ranges["x_max"] - ranges["x_min"] + 1
+    tiles_y = ranges["y_max"] - ranges["y_min"] + 1
+    tile_width_meters = extent_width / tiles_x
+    tile_height_meters = extent_height / tiles_y
+    pixels_per_meter_x = 512 / tile_width_meters
+    pixels_per_meter_y = 512 / tile_height_meters
+    
+    # Calculate canvas size in pixels
+    canvas_width = int(total_width * pixels_per_meter_x)
+    canvas_height = int(total_height * pixels_per_meter_y)
+    
+    # Limit canvas size to prevent memory issues
+    max_canvas_size = 2048
+    if canvas_width > max_canvas_size or canvas_height > max_canvas_size:
+        scale_factor = min(max_canvas_size / canvas_width, max_canvas_size / canvas_height)
+        canvas_width = int(canvas_width * scale_factor)
+        canvas_height = int(canvas_height * scale_factor)
+        pixels_per_meter_x *= scale_factor
+        pixels_per_meter_y *= scale_factor
+    
+    logger.info(f"Canvas size: {canvas_width}x{canvas_height}")
+    
+    # Create the composite canvas
+    canvas = Image.new('RGBA', (canvas_width, canvas_height), (0, 0, 0, 0))
+    
+    # Fetch and place each tile
+    for level, tile_x, tile_y in tiles:
+        try:
+            tile_url = f"{BASE_URL}/{level}/{tile_x}/{tile_y}"
+            response = requests.get(tile_url, timeout=10)
+            
+            if response.status_code == 200:
+                # Get the bounds of this LKS-92 tile
+                tile_bounds = get_lks92_tile_bounds(level, tile_x, tile_y)
+                if not tile_bounds:
+                    continue
+                
+                # Calculate where this tile should be placed on the canvas
+                x_offset = int((tile_bounds['xmin'] - lks92_bounds['xmin']) * pixels_per_meter_x)
+                y_offset = int((lks92_bounds['ymax'] - tile_bounds['ymax']) * pixels_per_meter_y)
+                
+                # Open and paste the tile
+                tile_img = Image.open(io.BytesIO(response.content))
+                
+                # Resize tile if canvas is scaled
+                if pixels_per_meter_x != 512 / tile_width_meters:
+                    scale = pixels_per_meter_x / (512 / tile_width_meters)
+                    new_size = (int(512 * scale), int(512 * scale))
+                    tile_img = tile_img.resize(new_size, Image.LANCZOS)
+                
+                canvas.paste(tile_img, (x_offset, y_offset))
+                logger.info(f"Placed tile {tile_x}/{tile_y} at offset ({x_offset}, {y_offset})")
+            else:
+                logger.warning(f"Failed to fetch tile {tile_x}/{tile_y}: {response.status_code}")
+                
+        except Exception as e:
+            logger.error(f"Error processing tile {tile_x}/{tile_y}: {str(e)}")
+            continue
+    
+    # Now crop the WGS84 area from the composite
+    # Transform WGS84 bounds to LKS-92
+    wgs84_nw_x, wgs84_nw_y = transformer_to_lks92.transform(wgs84_bounds["west"], wgs84_bounds["north"])
+    wgs84_se_x, wgs84_se_y = transformer_to_lks92.transform(wgs84_bounds["east"], wgs84_bounds["south"])
+    
+    # Calculate crop coordinates on the canvas
+    crop_left = int((wgs84_nw_x - lks92_bounds['xmin']) * pixels_per_meter_x)
+    crop_right = int((wgs84_se_x - lks92_bounds['xmin']) * pixels_per_meter_x)
+    crop_top = int((lks92_bounds['ymax'] - wgs84_nw_y) * pixels_per_meter_y)
+    crop_bottom = int((lks92_bounds['ymax'] - wgs84_se_y) * pixels_per_meter_y)
+    
+    # Ensure crop coordinates are within canvas bounds
+    crop_left = max(0, min(canvas_width - 1, crop_left))
+    crop_right = max(crop_left + 1, min(canvas_width, crop_right))
+    crop_top = max(0, min(canvas_height - 1, crop_top))
+    crop_bottom = max(crop_top + 1, min(canvas_height, crop_bottom))
+    
+    logger.info(f"Cropping canvas from ({crop_left}, {crop_top}) to ({crop_right}, {crop_bottom})")
+    
+    # Crop the final area
+    final_img = canvas.crop((crop_left, crop_top, crop_right, crop_bottom))
+    
+    # Resize to 256x256
+    final_img = final_img.resize((256, 256), Image.LANCZOS)
+    
+    return final_img
 
 @app.route('/<int:z>/<int:x>/<int:y>.png')
 def get_tile(z, x, y):
@@ -271,10 +358,24 @@ def get_tile(z, x, y):
     try:
         logger.info(f"Processing tile request: {z}/{x}/{y}")
         
-        # Convert WGS84 tile coordinates to LKS-92
-        lks92_coords = wgs84_to_lks92_tile(x, y, z)
+        # Try to create a composite tile from multiple LKS-92 tiles
+        composite_img = composite_tiles_for_wgs84(x, y, z)
         
-        if lks92_coords is None:
+        if composite_img:
+            # Save to bytes
+            output = io.BytesIO()
+            composite_img.save(output, format='PNG')
+            output.seek(0)
+            
+            return Response(
+                output.getvalue(),
+                mimetype='image/png',
+                headers={
+                    'Cache-Control': 'public, max-age=3600',
+                    'Access-Control-Allow-Origin': '*'
+                }
+            )
+        else:
             logger.warning(f"Tile {z}/{x}/{y} is outside coverage area")
             return Response(
                 b'',
@@ -284,135 +385,6 @@ def get_tile(z, x, y):
                     'Access-Control-Allow-Origin': '*'
                 }
             )
-        
-        level, tile_x, tile_y = lks92_coords
-        logger.info(f"Mapped to LKS-92 tile: level={level}, x={tile_x}, y={tile_y}")
-        
-        # Construct URL for ZMNI map server
-        tile_url = f"{BASE_URL}/{level}/{tile_x}/{tile_y}"
-        logger.info(f"Fetching from: {tile_url}")
-        
-        # Fetch tile from ZMNI server
-        response = requests.get(tile_url, timeout=30)
-        logger.info(f"ZMNI server response: {response.status_code}")
-        
-        if response.status_code == 200:
-            # Crop the appropriate 256x256 section from the 512x512 LKS-92 tile
-            try:
-                # Get WGS84 bounds of the requested tile
-                wgs84_bounds = get_tile_bounds_wgs84(x, y, z)
-                
-                # Get LKS-92 bounds of the source tile
-                lks92_tile_bounds = get_lks92_tile_bounds(level, tile_x, tile_y)
-                
-                if lks92_tile_bounds:
-                    # Transform WGS84 bounds to LKS-92
-                    wgs84_nw_x, wgs84_nw_y = transformer_to_lks92.transform(wgs84_bounds["west"], wgs84_bounds["north"])
-                    wgs84_se_x, wgs84_se_y = transformer_to_lks92.transform(wgs84_bounds["east"], wgs84_bounds["south"])
-                    
-                    logger.info(f"WGS84 tile bounds in LKS-92: NW({wgs84_nw_x:.2f}, {wgs84_nw_y:.2f}) SE({wgs84_se_x:.2f}, {wgs84_se_y:.2f})")
-                    logger.info(f"LKS-92 tile bounds: {lks92_tile_bounds}")
-                    
-                    # Calculate the intersection of WGS84 tile area with LKS-92 tile area
-                    intersect_xmin = max(wgs84_nw_x, lks92_tile_bounds["xmin"])
-                    intersect_xmax = min(wgs84_se_x, lks92_tile_bounds["xmax"])
-                    intersect_ymin = max(wgs84_se_y, lks92_tile_bounds["ymin"])
-                    intersect_ymax = min(wgs84_nw_y, lks92_tile_bounds["ymax"])
-                    
-                    # Check if there's actually an intersection
-                    if intersect_xmin >= intersect_xmax or intersect_ymin >= intersect_ymax:
-                        logger.warning("No intersection between WGS84 tile and LKS-92 tile")
-                        # Return empty/transparent tile
-                        empty_img = Image.new('RGBA', (256, 256), (0, 0, 0, 0))
-                        output = io.BytesIO()
-                        empty_img.save(output, format='PNG')
-                        output.seek(0)
-                        return Response(
-                            output.getvalue(),
-                            mimetype='image/png',
-                            headers={
-                                'Cache-Control': 'public, max-age=3600',
-                                'Access-Control-Allow-Origin': '*'
-                            }
-                        )
-                    
-                    # Calculate the relative position within the LKS-92 tile (0.0 to 1.0)
-                    lks92_width = lks92_tile_bounds["xmax"] - lks92_tile_bounds["xmin"]
-                    lks92_height = lks92_tile_bounds["ymax"] - lks92_tile_bounds["ymin"]
-                    
-                    # Calculate crop coordinates in pixels (0-512) based on intersection
-                    left = int(((intersect_xmin - lks92_tile_bounds["xmin"]) / lks92_width) * 512)
-                    right = int(((intersect_xmax - lks92_tile_bounds["xmin"]) / lks92_width) * 512)
-                    top = int(((lks92_tile_bounds["ymax"] - intersect_ymax) / lks92_height) * 512)
-                    bottom = int(((lks92_tile_bounds["ymax"] - intersect_ymin) / lks92_height) * 512)
-                    
-                    # Ensure coordinates are within bounds
-                    left = max(0, min(511, left))
-                    right = max(1, min(512, right))
-                    top = max(0, min(511, top))
-                    bottom = max(1, min(512, bottom))
-                    
-                    logger.info(f"Intersection area: ({intersect_xmin:.2f}, {intersect_ymin:.2f}) to ({intersect_xmax:.2f}, {intersect_ymax:.2f})")
-                    logger.info(f"Crop coordinates: left={left}, top={top}, right={right}, bottom={bottom}")
-                    
-                    # Open the image and crop
-                    img = Image.open(io.BytesIO(response.content))
-                    cropped_img = img.crop((left, top, right, bottom))
-                    
-                    logger.info(f"Cropped image size: {cropped_img.size}")
-                    
-                    # Always resize to 256x256
-                    resized_img = cropped_img.resize((256, 256), Image.LANCZOS)
-                    
-                    # Save to bytes
-                    output = io.BytesIO()
-                    resized_img.save(output, format='PNG')
-                    output.seek(0)
-                    
-                    return Response(
-                        output.getvalue(),
-                        mimetype='image/png',
-                        headers={
-                            'Cache-Control': 'public, max-age=3600',
-                            'Access-Control-Allow-Origin': '*'
-                        }
-                    )
-                else:
-                    logger.warning(f"Could not get LKS-92 tile bounds for level={level}, tile_x={tile_x}, tile_y={tile_y}")
-                
-            except Exception as e:
-                logger.error(f"Error cropping tile: {str(e)}")
-                
-            # Fall back to simple resize if cropping fails
-            try:
-                img = Image.open(io.BytesIO(response.content))
-                resized_img = img.resize((256, 256), Image.LANCZOS)
-                output = io.BytesIO()
-                resized_img.save(output, format='PNG')
-                output.seek(0)
-                
-                return Response(
-                    output.getvalue(),
-                    mimetype='image/png',
-                    headers={
-                        'Cache-Control': 'public, max-age=3600',
-                        'Access-Control-Allow-Origin': '*'
-                    }
-                )
-            except Exception as e:
-                logger.error(f"Error with fallback resize: {str(e)}")
-                # Final fallback to original image
-                return Response(
-                    response.content,
-                    mimetype='image/png',
-                    headers={
-                        'Cache-Control': 'public, max-age=3600',
-                        'Access-Control-Allow-Origin': '*'
-                    }
-                )
-        else:
-            logger.error(f"ZMNI server returned {response.status_code} for {tile_url}")
-            abort(response.status_code)
             
     except Exception as e:
         logger.error(f"Error processing tile {z}/{x}/{y}: {str(e)}", exc_info=True)
