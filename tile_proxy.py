@@ -18,7 +18,7 @@ logger = logging.getLogger(__name__)
 
 # ZMNI Map Server configuration
 BASE_URL = "https://lvmgeo.lvm.lv/proxy/D341478CE74F4F02B68607991448D499/CacheDinamic/ZMNI/MapServer/tile"
-TILE_SIZE = 512
+TILE_SIZE = 256
 
 # Coordinate transformers
 # WGS84 to LKS-92 (EPSG:3059)
@@ -100,7 +100,7 @@ def wgs84_to_lks92_tile(x, y, z):
     # Find the best matching zoom level based on resolution
     # Calculate the resolution of the WGS84 tile in LKS-92 coordinates
     tile_width_lks92 = abs(se_x - nw_x)
-    tile_resolution = tile_width_lks92 / TILE_SIZE
+    tile_resolution = tile_width_lks92 / 256  # WGS84 tiles are 256x256
     
     # Find closest resolution level
     best_level = 0
@@ -119,9 +119,9 @@ def wgs84_to_lks92_tile(x, y, z):
     center_lat = (bounds["north"] + bounds["south"]) / 2
     center_x, center_y = transformer_to_lks92.transform(center_lon, center_lat)
     
-    # Calculate tile indices
-    tile_x = int((center_x - TILE_ORIGIN["x"]) / (resolution * TILE_SIZE))
-    tile_y = int((TILE_ORIGIN["y"] - center_y) / (resolution * TILE_SIZE))
+    # Calculate tile indices (LKS-92 tiles are 512x512)
+    tile_x = int((center_x - TILE_ORIGIN["x"]) / (resolution * 512))
+    tile_y = int((TILE_ORIGIN["y"] - center_y) / (resolution * 512))
     
     return best_level, tile_x, tile_y
 
