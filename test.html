@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ZMNI Tile Proxy Test</title>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <style>
+        body {
+            margin: 0;
+            padding: 20px;
+            font-family: Arial, sans-serif;
+        }
+        #map {
+            height: 600px;
+            width: 100%;
+            border: 1px solid #ccc;
+        }
+        .info {
+            margin-bottom: 20px;
+            padding: 10px;
+            background-color: #f5f5f5;
+            border-radius: 5px;
+        }
+        .controls {
+            margin-top: 10px;
+        }
+        button {
+            margin: 5px;
+            padding: 8px 16px;
+            background-color: #007cba;
+            color: white;
+            border: none;
+            border-radius: 3px;
+            cursor: pointer;
+        }
+        button:hover {
+            background-color: #005a87;
+        }
+    </style>
+</head>
+<body>
+    <div class="info">
+        <h1>ZMNI Tile Proxy Test</h1>
+        <p>This page tests the ZMNI meliorācijas datu serviss tile proxy server.</p>
+        <p><strong>Proxy URL:</strong> http://localhost:8117/{z}/{x}/{y}.png</p>
+        <p><strong>Coverage Area:</strong> Latvia (LKS-92 extent)</p>
+    </div>
+
+    <div class="controls">
+        <button onclick="goToRiga()">Go to Riga</button>
+        <button onclick="goToJelgava()">Go to Jelgava</button>
+        <button onclick="goToLiepaja()">Go to Liepāja</button>
+        <button onclick="toggleLayer()">Toggle ZMNI Layer</button>
+    </div>
+
+    <div id="map"></div>
+
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script>
+        // Initialize map centered on Latvia
+        const map = L.map('map').setView([56.9496, 24.1052], 8);
+
+        // Add OpenStreetMap base layer
+        const osmLayer = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            attribution: '© OpenStreetMap contributors',
+            maxZoom: 18
+        }).addTo(map);
+
+        // Add ZMNI tile layer
+        const zmniLayer = L.tileLayer('http://localhost:8117/{z}/{x}/{y}.png', {
+            attribution: 'ZMNI meliorācijas datu serviss via Tile Proxy',
+            maxZoom: 18,
+            opacity: 0.8,
+            errorTileUrl: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg=='
+        }).addTo(map);
+
+        let zmniVisible = true;
+
+        // Control functions
+        function goToRiga() {
+            map.setView([56.9496, 24.1052], 12);
+        }
+
+        function goToJelgava() {
+            map.setView([56.6500, 23.7294], 12);
+        }
+
+        function goToLiepaja() {
+            map.setView([56.5046, 21.0086], 12);
+        }
+
+        function toggleLayer() {
+            if (zmniVisible) {
+                map.removeLayer(zmniLayer);
+                zmniVisible = false;
+            } else {
+                map.addLayer(zmniLayer);
+                zmniVisible = true;
+            }
+        }
+
+        // Add layer control
+        const baseMaps = {
+            "OpenStreetMap": osmLayer
+        };
+
+        const overlayMaps = {
+            "ZMNI Meliorācijas": zmniLayer
+        };
+
+        L.control.layers(baseMaps, overlayMaps).addTo(map);
+
+        // Add scale control
+        L.control.scale().addTo(map);
+
+        // Add coordinates display
+        const coordsControl = L.control({position: 'bottomleft'});
+        coordsControl.onAdd = function(map) {
+            const div = L.DomUtil.create('div', 'coords-control');
+            div.style.background = 'rgba(255,255,255,0.8)';
+            div.style.padding = '5px';
+            div.style.fontSize = '12px';
+            div.innerHTML = 'Move mouse to see coordinates';
+            return div;
+        };
+        coordsControl.addTo(map);
+
+        // Update coordinates on mouse move
+        map.on('mousemove', function(e) {
+            const coords = document.querySelector('.coords-control');
+            if (coords) {
+                coords.innerHTML = `Lat: ${e.latlng.lat.toFixed(6)}, Lng: ${e.latlng.lng.toFixed(6)}`;
+            }
+        });
+
+        // Log tile load events
+        zmniLayer.on('tileload', function(e) {
+            console.log('ZMNI tile loaded:', e.url);
+        });
+
+        zmniLayer.on('tileerror', function(e) {
+            console.log('ZMNI tile error:', e.url);
+        });
+
+        // Add click handler to show tile info
+        map.on('click', function(e) {
+            const zoom = map.getZoom();
+            const lat = e.latlng.lat;
+            const lng = e.latlng.lng;
+            
+            // Calculate tile coordinates
+            const tileX = Math.floor((lng + 180) / 360 * Math.pow(2, zoom));
+            const tileY = Math.floor((1 - Math.log(Math.tan(lat * Math.PI / 180) + 1 / Math.cos(lat * Math.PI / 180)) / Math.PI) / 2 * Math.pow(2, zoom));
+            
+            const tileUrl = `http://localhost:8117/${zoom}/${tileX}/${tileY}.png`;
+            
+            L.popup()
+                .setLatLng(e.latlng)
+                .setContent(`
+                    <strong>Tile Info:</strong><br>
+                    Zoom: ${zoom}<br>
+                    Tile: ${tileX}, ${tileY}<br>
+                    <a href="${tileUrl}" target="_blank">View tile</a>
+                `)
+                .openOn(map);
+        });
+    </script>
+</body>
+</html>
