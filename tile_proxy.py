@@ -6,10 +6,15 @@ Converts WGS84 z/x/y tile requests to LKS-92 (EPSG:3059) coordinate system
 
 import math
 import requests
+import logging
 from flask import Flask, Response, abort
 from pyproj import Transformer
 
 app = Flask(__name__)
+
+# Configure logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 # ZMNI Map Server configuration
 BASE_URL = "https://lvmgeo.lvm.lv/proxy/D341478CE74F4F02B68607991448D499/CacheDinamic/ZMNI/MapServer/tile"
@@ -124,20 +129,25 @@ def wgs84_to_lks92_tile(x, y, z):
 def get_tile(z, x, y):
     """Proxy endpoint for tile requests"""
     try:
+        logger.info(f"Processing tile request: {z}/{x}/{y}")
+        
         # Convert WGS84 tile coordinates to LKS-92
         lks92_coords = wgs84_to_lks92_tile(x, y, z)
         
         if lks92_coords is None:
-            # Tile is outside the coverage area
+            logger.warning(f"Tile {z}/{x}/{y} is outside coverage area")
             abort(404)
         
         level, tile_x, tile_y = lks92_coords
+        logger.info(f"Mapped to LKS-92 tile: level={level}, x={tile_x}, y={tile_y}")
         
         # Construct URL for ZMNI map server
         tile_url = f"{BASE_URL}/{level}/{tile_x}/{tile_y}"
+        logger.info(f"Fetching from: {tile_url}")
         
         # Fetch tile from ZMNI server
         response = requests.get(tile_url, timeout=30)
+        logger.info(f"ZMNI server response: {response.status_code}")
         
         if response.status_code == 200:
             return Response(
@@ -149,10 +159,11 @@ def get_tile(z, x, y):
                 }
             )
         else:
+            logger.error(f"ZMNI server returned {response.status_code} for {tile_url}")
             abort(response.status_code)
             
     except Exception as e:
-        print(f"Error processing tile {z}/{x}/{y}: {e}")
+        logger.error(f"Error processing tile {z}/{x}/{y}: {str(e)}", exc_info=True)
         abort(500)
 
 @app.route('/health')
