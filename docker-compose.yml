@@ -6,7 +6,7 @@ services:
     ports:
       - "8117:8117"
     environment:
-      - FLASK_ENV=production
+      - FLASK_ENV=development
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8117/health"]

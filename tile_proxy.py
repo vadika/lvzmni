@@ -185,4 +185,6 @@ def info():
     }
 
 if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=8117, debug=True)
+    import os
+    debug_mode = os.environ.get('FLASK_ENV') == 'development'
+    app.run(host='0.0.0.0', port=8117, debug=debug_mode)
