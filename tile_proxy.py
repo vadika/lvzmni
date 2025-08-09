@@ -163,7 +163,14 @@ def get_tile(z, x, y):
         
         if lks92_coords is None:
             logger.warning(f"Tile {z}/{x}/{y} is outside coverage area")
-            abort(404)
+            return Response(
+                b'',
+                status=404,
+                headers={
+                    'Cache-Control': 'public, max-age=3600',
+                    'Access-Control-Allow-Origin': '*'
+                }
+            )
         
         level, tile_x, tile_y = lks92_coords
         logger.info(f"Mapped to LKS-92 tile: level={level}, x={tile_x}, y={tile_y}")
