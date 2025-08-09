@@ -53,6 +53,24 @@ RESOLUTIONS = [
     0.529167725002117   # level 13
 ]
 
+# Valid tile ranges for each zoom level (from ZMNI service documentation)
+VALID_TILE_RANGES = {
+    0: {"x_min": 6, "x_max": 7, "y_min": 9, "y_max": 10},
+    1: {"x_min": 13, "x_max": 14, "y_min": 19, "y_max": 21},
+    2: {"x_min": 26, "x_max": 28, "y_min": 39, "y_max": 43},
+    3: {"x_min": 52, "x_max": 56, "y_min": 79, "y_max": 87},
+    4: {"x_min": 130, "x_max": 141, "y_min": 199, "y_max": 217},
+    5: {"x_min": 261, "x_max": 283, "y_min": 399, "y_max": 435},
+    6: {"x_min": 523, "x_max": 566, "y_min": 798, "y_max": 871},
+    7: {"x_min": 654, "x_max": 708, "y_min": 998, "y_max": 1088},
+    8: {"x_min": 873, "x_max": 944, "y_min": 1331, "y_max": 1451},
+    9: {"x_min": 1309, "x_max": 1416, "y_min": 1997, "y_max": 2177},
+    10: {"x_min": 1746, "x_max": 1888, "y_min": 2662, "y_max": 2903},
+    11: {"x_min": 2619, "x_max": 2833, "y_min": 3994, "y_max": 4355},
+    12: {"x_min": 5238, "x_max": 5666, "y_min": 7988, "y_max": 8711},
+    13: {"x_min": 13095, "x_max": 14166, "y_min": 19971, "y_max": 21779}
+}
+
 def deg2num(lat_deg, lon_deg, zoom):
     """Convert lat/lon to tile numbers for Web Mercator"""
     lat_rad = math.radians(lat_deg)
@@ -122,6 +140,15 @@ def wgs84_to_lks92_tile(x, y, z):
     # Calculate tile indices (LKS-92 tiles are 512x512)
     tile_x = int((center_x - TILE_ORIGIN["x"]) / (resolution * 512))
     tile_y = int((TILE_ORIGIN["y"] - center_y) / (resolution * 512))
+    
+    # Validate tile coordinates are within service coverage
+    if best_level in VALID_TILE_RANGES:
+        ranges = VALID_TILE_RANGES[best_level]
+        if (tile_x < ranges["x_min"] or tile_x > ranges["x_max"] or
+            tile_y < ranges["y_min"] or tile_y > ranges["y_max"]):
+            logger.warning(f"Calculated tile {best_level}/{tile_x}/{tile_y} is outside valid range: "
+                         f"x:{ranges['x_min']}-{ranges['x_max']}, y:{ranges['y_min']}-{ranges['y_max']}")
+            return None
     
     return best_level, tile_x, tile_y
 
