@@ -14,7 +14,7 @@ COPY tile_proxy.py .
 COPY mapdesc.json .
 
 # Expose port
-EXPOSE 5000
+EXPOSE 8117
 
 # Set environment variables
 ENV FLASK_APP=tile_proxy.py
