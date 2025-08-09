@@ -253,40 +253,39 @@ def composite_tiles_for_wgs84(x, y, z):
     level = tile_info['level']
     tiles = tile_info['tiles']
     wgs84_bounds = tile_info['wgs84_bounds']
-    lks92_bounds = tile_info['lks92_bounds']
     
     logger.info(f"Compositing {len(tiles)} tiles for WGS84 tile {z}/{x}/{y}")
     
-    # Create a canvas large enough to hold all the tiles
-    # Calculate the total area we need to cover in LKS-92 coordinates
-    total_width = lks92_bounds['xmax'] - lks92_bounds['xmin']
-    total_height = lks92_bounds['ymax'] - lks92_bounds['ymin']
+    # Transform WGS84 bounds to LKS-92 for the exact area we need
+    wgs84_nw_x, wgs84_nw_y = transformer_to_lks92.transform(wgs84_bounds["west"], wgs84_bounds["north"])
+    wgs84_se_x, wgs84_se_y = transformer_to_lks92.transform(wgs84_bounds["east"], wgs84_bounds["south"])
     
-    # Calculate pixels per meter for this level
+    # Calculate the bounding box that encompasses all needed LKS-92 tiles
+    ranges = VALID_TILE_RANGES[level]
     extent_width = LKS92_EXTENT["xmax"] - LKS92_EXTENT["xmin"]
     extent_height = LKS92_EXTENT["ymax"] - LKS92_EXTENT["ymin"]
-    ranges = VALID_TILE_RANGES[level]
     tiles_x = ranges["x_max"] - ranges["x_min"] + 1
     tiles_y = ranges["y_max"] - ranges["y_min"] + 1
     tile_width_meters = extent_width / tiles_x
     tile_height_meters = extent_height / tiles_y
-    pixels_per_meter_x = 512 / tile_width_meters
-    pixels_per_meter_y = 512 / tile_height_meters
     
-    # Calculate canvas size in pixels
-    canvas_width = int(total_width * pixels_per_meter_x)
-    canvas_height = int(total_height * pixels_per_meter_y)
+    # Find the bounds of all tiles we need to fetch
+    min_tile_x = min(tile[1] for tile in tiles)
+    max_tile_x = max(tile[1] for tile in tiles)
+    min_tile_y = min(tile[2] for tile in tiles)
+    max_tile_y = max(tile[2] for tile in tiles)
     
-    # Limit canvas size to prevent memory issues
-    max_canvas_size = 2048
-    if canvas_width > max_canvas_size or canvas_height > max_canvas_size:
-        scale_factor = min(max_canvas_size / canvas_width, max_canvas_size / canvas_height)
-        canvas_width = int(canvas_width * scale_factor)
-        canvas_height = int(canvas_height * scale_factor)
-        pixels_per_meter_x *= scale_factor
-        pixels_per_meter_y *= scale_factor
+    # Calculate the composite area bounds in LKS-92
+    composite_xmin = LKS92_EXTENT["xmin"] + (min_tile_x - ranges["x_min"]) * tile_width_meters
+    composite_xmax = LKS92_EXTENT["xmin"] + (max_tile_x - ranges["x_min"] + 1) * tile_width_meters
+    composite_ymax = LKS92_EXTENT["ymax"] - (min_tile_y - ranges["y_min"]) * tile_height_meters
+    composite_ymin = LKS92_EXTENT["ymax"] - (max_tile_y - ranges["y_min"] + 1) * tile_height_meters
     
-    logger.info(f"Canvas size: {canvas_width}x{canvas_height}")
+    # Calculate canvas size (each LKS-92 tile is 512x512 pixels)
+    canvas_width = (max_tile_x - min_tile_x + 1) * 512
+    canvas_height = (max_tile_y - min_tile_y + 1) * 512
+    
+    logger.info(f"Canvas size: {canvas_width}x{canvas_height} for tiles {min_tile_x}-{max_tile_x}, {min_tile_y}-{max_tile_y}")
     
     # Create the composite canvas
     canvas = Image.new('RGBA', (canvas_width, canvas_height), (0, 0, 0, 0))
@@ -298,24 +297,12 @@ def composite_tiles_for_wgs84(x, y, z):
             response = requests.get(tile_url, timeout=10)
             
             if response.status_code == 200:
-                # Get the bounds of this LKS-92 tile
-                tile_bounds = get_lks92_tile_bounds(level, tile_x, tile_y)
-                if not tile_bounds:
-                    continue
-                
                 # Calculate where this tile should be placed on the canvas
-                x_offset = int((tile_bounds['xmin'] - lks92_bounds['xmin']) * pixels_per_meter_x)
-                y_offset = int((lks92_bounds['ymax'] - tile_bounds['ymax']) * pixels_per_meter_y)
+                x_offset = (tile_x - min_tile_x) * 512
+                y_offset = (tile_y - min_tile_y) * 512
                 
                 # Open and paste the tile
                 tile_img = Image.open(io.BytesIO(response.content))
-                
-                # Resize tile if canvas is scaled
-                if pixels_per_meter_x != 512 / tile_width_meters:
-                    scale = pixels_per_meter_x / (512 / tile_width_meters)
-                    new_size = (int(512 * scale), int(512 * scale))
-                    tile_img = tile_img.resize(new_size, Image.LANCZOS)
-                
                 canvas.paste(tile_img, (x_offset, y_offset))
                 logger.info(f"Placed tile {tile_x}/{tile_y} at offset ({x_offset}, {y_offset})")
             else:
@@ -326,15 +313,15 @@ def composite_tiles_for_wgs84(x, y, z):
             continue
     
     # Now crop the WGS84 area from the composite
-    # Transform WGS84 bounds to LKS-92
-    wgs84_nw_x, wgs84_nw_y = transformer_to_lks92.transform(wgs84_bounds["west"], wgs84_bounds["north"])
-    wgs84_se_x, wgs84_se_y = transformer_to_lks92.transform(wgs84_bounds["east"], wgs84_bounds["south"])
+    # Calculate pixels per meter
+    pixels_per_meter_x = 512 / tile_width_meters
+    pixels_per_meter_y = 512 / tile_height_meters
     
     # Calculate crop coordinates on the canvas
-    crop_left = int((wgs84_nw_x - lks92_bounds['xmin']) * pixels_per_meter_x)
-    crop_right = int((wgs84_se_x - lks92_bounds['xmin']) * pixels_per_meter_x)
-    crop_top = int((lks92_bounds['ymax'] - wgs84_nw_y) * pixels_per_meter_y)
-    crop_bottom = int((lks92_bounds['ymax'] - wgs84_se_y) * pixels_per_meter_y)
+    crop_left = int((wgs84_nw_x - composite_xmin) * pixels_per_meter_x)
+    crop_right = int((wgs84_se_x - composite_xmin) * pixels_per_meter_x)
+    crop_top = int((composite_ymax - wgs84_nw_y) * pixels_per_meter_y)
+    crop_bottom = int((composite_ymax - wgs84_se_y) * pixels_per_meter_y)
     
     # Ensure crop coordinates are within canvas bounds
     crop_left = max(0, min(canvas_width - 1, crop_left))
@@ -342,6 +329,8 @@ def composite_tiles_for_wgs84(x, y, z):
     crop_top = max(0, min(canvas_height - 1, crop_top))
     crop_bottom = max(crop_top + 1, min(canvas_height, crop_bottom))
     
+    logger.info(f"WGS84 area in LKS-92: ({wgs84_nw_x:.2f}, {wgs84_se_y:.2f}) to ({wgs84_se_x:.2f}, {wgs84_nw_y:.2f})")
+    logger.info(f"Composite area: ({composite_xmin:.2f}, {composite_ymin:.2f}) to ({composite_xmax:.2f}, {composite_ymax:.2f})")
     logger.info(f"Cropping canvas from ({crop_left}, {crop_top}) to ({crop_right}, {crop_bottom})")
     
     # Crop the final area
