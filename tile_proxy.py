@@ -101,37 +101,58 @@ def get_tile_bounds_wgs84(x, y, z):
         "south": lat_se
     }
 
+def get_lks92_tile_bounds(level, tile_x, tile_y):
+    """Calculate LKS-92 bounds for a given tile using the actual extent and tile ranges"""
+    if level not in VALID_TILE_RANGES:
+        return None
+    
+    ranges = VALID_TILE_RANGES[level]
+    
+    # Calculate tile size in LKS-92 coordinates based on extent and tile ranges
+    extent_width = LKS92_EXTENT["xmax"] - LKS92_EXTENT["xmin"]  # 490000 meters
+    extent_height = LKS92_EXTENT["ymax"] - LKS92_EXTENT["ymin"]  # 290000 meters
+    
+    tiles_x = ranges["x_max"] - ranges["x_min"] + 1
+    tiles_y = ranges["y_max"] - ranges["y_min"] + 1
+    
+    tile_width = extent_width / tiles_x
+    tile_height = extent_height / tiles_y
+    
+    # Calculate tile bounds
+    x_offset = tile_x - ranges["x_min"]
+    y_offset = tile_y - ranges["y_min"]
+    
+    xmin = LKS92_EXTENT["xmin"] + (x_offset * tile_width)
+    xmax = xmin + tile_width
+    ymax = LKS92_EXTENT["ymax"] - (y_offset * tile_height)
+    ymin = ymax - tile_height
+    
+    return {
+        "xmin": xmin,
+        "ymin": ymin,
+        "xmax": xmax,
+        "ymax": ymax
+    }
+
 def test_known_lks92_tile(level, tile_x, tile_y):
     """Test function to verify LKS-92 tile coordinate calculations"""
-    resolution = RESOLUTIONS[level]
-    
-    # Calculate LKS-92 coordinates for this tile (northwest corner)
-    lks92_x = TILE_ORIGIN["x"] + (tile_x * resolution * 512)
-    lks92_y = TILE_ORIGIN["y"] - (tile_y * resolution * 512)
-    
-    # Calculate tile bounds in LKS-92
-    tile_size_meters = resolution * 512
-    lks92_bounds = {
-        "xmin": lks92_x,
-        "ymin": lks92_y - tile_size_meters,
-        "xmax": lks92_x + tile_size_meters,
-        "ymax": lks92_y
-    }
+    bounds = get_lks92_tile_bounds(level, tile_x, tile_y)
+    if not bounds:
+        return None, None
     
     # Convert corners to WGS84
-    nw_lon, nw_lat = transformer_to_wgs84.transform(lks92_bounds["xmin"], lks92_bounds["ymax"])
-    se_lon, se_lat = transformer_to_wgs84.transform(lks92_bounds["xmax"], lks92_bounds["ymin"])
+    nw_lon, nw_lat = transformer_to_wgs84.transform(bounds["xmin"], bounds["ymax"])
+    se_lon, se_lat = transformer_to_wgs84.transform(bounds["xmax"], bounds["ymin"])
     center_lon, center_lat = transformer_to_wgs84.transform(
-        (lks92_bounds["xmin"] + lks92_bounds["xmax"]) / 2,
-        (lks92_bounds["ymin"] + lks92_bounds["ymax"]) / 2
+        (bounds["xmin"] + bounds["xmax"]) / 2,
+        (bounds["ymin"] + bounds["ymax"]) / 2
     )
     
     logger.info(f"LKS-92 tile {level}/{tile_x}/{tile_y}:")
-    logger.info(f"  LKS-92 bounds: {lks92_bounds}")
+    logger.info(f"  LKS-92 bounds: {bounds}")
     logger.info(f"  WGS84 NW: {nw_lat:.6f}, {nw_lon:.6f}")
     logger.info(f"  WGS84 SE: {se_lat:.6f}, {se_lon:.6f}")
     logger.info(f"  WGS84 Center: {center_lat:.6f}, {center_lon:.6f}")
-    logger.info(f"  Resolution: {resolution}")
     
     return center_lat, center_lon
 
@@ -143,10 +164,15 @@ def wgs84_to_lks92_tile(x, y, z):
     # Transform corners to LKS-92
     nw_x, nw_y = transformer_to_lks92.transform(bounds["west"], bounds["north"])
     se_x, se_y = transformer_to_lks92.transform(bounds["east"], bounds["south"])
+    center_x, center_y = transformer_to_lks92.transform(
+        (bounds["west"] + bounds["east"]) / 2,
+        (bounds["north"] + bounds["south"]) / 2
+    )
     
     # Debug logging
     logger.info(f"WGS84 tile {z}/{x}/{y} bounds: {bounds}")
     logger.info(f"LKS-92 bounds: NW({nw_x:.2f}, {nw_y:.2f}) SE({se_x:.2f}, {se_y:.2f})")
+    logger.info(f"LKS-92 center: ({center_x:.2f}, {center_y:.2f})")
     
     # Check if tile intersects with LKS-92 extent
     if (se_x < LKS92_EXTENT["xmin"] or nw_x > LKS92_EXTENT["xmax"] or 
@@ -154,50 +180,57 @@ def wgs84_to_lks92_tile(x, y, z):
         logger.info(f"Tile outside LKS-92 extent")
         return None
     
-    # Find the best matching zoom level based on resolution
-    # Calculate the resolution of the WGS84 tile in LKS-92 coordinates
-    tile_width_lks92 = abs(se_x - nw_x)
-    tile_resolution = tile_width_lks92 / 256  # WGS84 tiles are 256x256
+    # Try each zoom level to find the best match
+    best_level = None
+    best_tile_x = None
+    best_tile_y = None
     
-    logger.info(f"Calculated tile resolution: {tile_resolution:.6f}")
+    for level in range(len(RESOLUTIONS)):
+        if level not in VALID_TILE_RANGES:
+            continue
+            
+        ranges = VALID_TILE_RANGES[level]
+        
+        # Calculate tile size for this level
+        extent_width = LKS92_EXTENT["xmax"] - LKS92_EXTENT["xmin"]
+        extent_height = LKS92_EXTENT["ymax"] - LKS92_EXTENT["ymin"]
+        
+        tiles_x = ranges["x_max"] - ranges["x_min"] + 1
+        tiles_y = ranges["y_max"] - ranges["y_min"] + 1
+        
+        tile_width = extent_width / tiles_x
+        tile_height = extent_height / tiles_y
+        
+        # Calculate which tile contains the center point
+        x_offset = (center_x - LKS92_EXTENT["xmin"]) / tile_width
+        y_offset = (LKS92_EXTENT["ymax"] - center_y) / tile_height
+        
+        tile_x = ranges["x_min"] + int(x_offset)
+        tile_y = ranges["y_min"] + int(y_offset)
+        
+        # Check if tile is within valid range
+        if (tile_x >= ranges["x_min"] and tile_x <= ranges["x_max"] and
+            tile_y >= ranges["y_min"] and tile_y <= ranges["y_max"]):
+            
+            # Calculate the resolution this would represent
+            wgs84_width = abs(se_x - nw_x)
+            wgs84_resolution = wgs84_width / 256  # WGS84 tiles are 256x256
+            lks92_resolution = tile_width / 512   # LKS-92 tiles are 512x512
+            
+            logger.info(f"Level {level}: WGS84 res={wgs84_resolution:.6f}, LKS-92 res={lks92_resolution:.6f}, tile={tile_x}/{tile_y}")
+            
+            # Use the level that best matches the resolution
+            if best_level is None or abs(wgs84_resolution - lks92_resolution) < abs(wgs84_resolution - (extent_width / (VALID_TILE_RANGES[best_level]["x_max"] - VALID_TILE_RANGES[best_level]["x_min"] + 1)) / 512):
+                best_level = level
+                best_tile_x = tile_x
+                best_tile_y = tile_y
     
-    # Find closest resolution level
-    best_level = 0
-    min_diff = float('inf')
-    for i, res in enumerate(RESOLUTIONS):
-        diff = abs(res - tile_resolution)
-        if diff < min_diff:
-            min_diff = diff
-            best_level = i
+    if best_level is not None:
+        logger.info(f"Selected LKS-92 tile: {best_level}/{best_tile_x}/{best_tile_y}")
+        return best_level, best_tile_x, best_tile_y
     
-    logger.info(f"Best matching level: {best_level} (resolution: {RESOLUTIONS[best_level]:.6f})")
-    
-    # Calculate LKS-92 tile coordinates
-    resolution = RESOLUTIONS[best_level]
-    
-    # Use center point of the WGS84 tile
-    center_lon = (bounds["west"] + bounds["east"]) / 2
-    center_lat = (bounds["north"] + bounds["south"]) / 2
-    center_x, center_y = transformer_to_lks92.transform(center_lon, center_lat)
-    
-    logger.info(f"Center point - WGS84: ({center_lat:.6f}, {center_lon:.6f}) LKS-92: ({center_x:.2f}, {center_y:.2f})")
-    
-    # Calculate tile indices (LKS-92 tiles are 512x512)
-    tile_x = int((center_x - TILE_ORIGIN["x"]) / (resolution * 512))
-    tile_y = int((TILE_ORIGIN["y"] - center_y) / (resolution * 512))
-    
-    logger.info(f"Calculated LKS-92 tile: {best_level}/{tile_x}/{tile_y}")
-    
-    # Validate tile coordinates are within service coverage
-    if best_level in VALID_TILE_RANGES:
-        ranges = VALID_TILE_RANGES[best_level]
-        if (tile_x < ranges["x_min"] or tile_x > ranges["x_max"] or
-            tile_y < ranges["y_min"] or tile_y > ranges["y_max"]):
-            logger.warning(f"Calculated tile {best_level}/{tile_x}/{tile_y} is outside valid range: "
-                         f"x:{ranges['x_min']}-{ranges['x_max']}, y:{ranges['y_min']}-{ranges['y_max']}")
-            return None
-    
-    return best_level, tile_x, tile_y
+    logger.warning(f"No suitable LKS-92 tile found for WGS84 tile {z}/{x}/{y}")
+    return None
 
 @app.route('/<int:z>/<int:x>/<int:y>.png')
 def get_tile(z, x, y):
