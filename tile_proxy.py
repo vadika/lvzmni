@@ -285,11 +285,25 @@ def test_tile_coords(level, tile_x, tile_y):
     """Test endpoint to verify tile coordinate calculations"""
     try:
         lat, lon = test_known_lks92_tile(level, tile_x, tile_y)
+        
+        # Test if the LKS-92 tile actually exists
+        tile_url = f"{BASE_URL}/{level}/{tile_x}/{tile_y}"
+        try:
+            response = requests.head(tile_url, timeout=10)
+            tile_exists = response.status_code == 200
+            tile_status = response.status_code
+        except Exception as e:
+            tile_exists = False
+            tile_status = f"Error: {str(e)}"
+        
         return {
             "lks92_tile": f"{level}/{tile_x}/{tile_y}",
             "wgs84_coords": {"lat": lat, "lon": lon},
             "resolution": RESOLUTIONS[level],
-            "valid_range": VALID_TILE_RANGES.get(level, "Unknown")
+            "valid_range": VALID_TILE_RANGES.get(level, "Unknown"),
+            "tile_exists": tile_exists,
+            "tile_status": tile_status,
+            "tile_url": tile_url
         }
     except Exception as e:
         return {"error": str(e)}, 500
