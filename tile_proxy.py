@@ -267,15 +267,60 @@ def get_tile(z, x, y):
         logger.info(f"ZMNI server response: {response.status_code}")
         
         if response.status_code == 200:
-            # Resize 512x512 tile to 256x256
+            # Crop the appropriate 256x256 section from the 512x512 LKS-92 tile
             try:
-                # Open the image from response content
+                # Get WGS84 bounds of the requested tile
+                wgs84_bounds = get_tile_bounds_wgs84(x, y, z)
+                
+                # Get LKS-92 bounds of the source tile
+                lks92_tile_bounds = get_lks92_tile_bounds(level, tile_x, tile_y)
+                
+                if lks92_tile_bounds:
+                    # Transform WGS84 bounds to LKS-92
+                    wgs84_nw_x, wgs84_nw_y = transformer_to_lks92.transform(wgs84_bounds["west"], wgs84_bounds["north"])
+                    wgs84_se_x, wgs84_se_y = transformer_to_lks92.transform(wgs84_bounds["east"], wgs84_bounds["south"])
+                    
+                    # Calculate the relative position within the LKS-92 tile (0.0 to 1.0)
+                    lks92_width = lks92_tile_bounds["xmax"] - lks92_tile_bounds["xmin"]
+                    lks92_height = lks92_tile_bounds["ymax"] - lks92_tile_bounds["ymin"]
+                    
+                    # Calculate crop coordinates (in pixels, 0-512)
+                    left = max(0, int(((wgs84_nw_x - lks92_tile_bounds["xmin"]) / lks92_width) * 512))
+                    right = min(512, int(((wgs84_se_x - lks92_tile_bounds["xmin"]) / lks92_width) * 512))
+                    top = max(0, int(((lks92_tile_bounds["ymax"] - wgs84_nw_y) / lks92_height) * 512))
+                    bottom = min(512, int(((lks92_tile_bounds["ymax"] - wgs84_se_y) / lks92_height) * 512))
+                    
+                    logger.info(f"Crop coordinates: left={left}, top={top}, right={right}, bottom={bottom}")
+                    
+                    # Open the image and crop
+                    img = Image.open(io.BytesIO(response.content))
+                    cropped_img = img.crop((left, top, right, bottom))
+                    
+                    # Resize to 256x256 if the crop isn't exactly that size
+                    if cropped_img.size != (256, 256):
+                        cropped_img = cropped_img.resize((256, 256), Image.LANCZOS)
+                    
+                    # Save to bytes
+                    output = io.BytesIO()
+                    cropped_img.save(output, format='PNG')
+                    output.seek(0)
+                    
+                    return Response(
+                        output.getvalue(),
+                        mimetype='image/png',
+                        headers={
+                            'Cache-Control': 'public, max-age=3600',
+                            'Access-Control-Allow-Origin': '*'
+                        }
+                    )
+                
+            except Exception as e:
+                logger.error(f"Error cropping tile: {str(e)}")
+                
+            # Fall back to simple resize if cropping fails
+            try:
                 img = Image.open(io.BytesIO(response.content))
-                
-                # Resize to 256x256
                 resized_img = img.resize((256, 256), Image.LANCZOS)
-                
-                # Save to bytes
                 output = io.BytesIO()
                 resized_img.save(output, format='PNG')
                 output.seek(0)
@@ -289,8 +334,8 @@ def get_tile(z, x, y):
                     }
                 )
             except Exception as e:
-                logger.error(f"Error resizing tile: {str(e)}")
-                # Fall back to original image if resize fails
+                logger.error(f"Error with fallback resize: {str(e)}")
+                # Final fallback to original image
                 return Response(
                     response.content,
                     mimetype='image/png',
