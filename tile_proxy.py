@@ -290,6 +290,16 @@ def composite_tiles_for_wgs84(x, y, z):
     # Create the composite canvas
     canvas = Image.new('RGBA', (canvas_width, canvas_height), (0, 0, 0, 0))
     
+    # Log all tile URLs that will be fetched
+    tile_urls = []
+    for level, tile_x, tile_y in tiles:
+        tile_url = f"{BASE_URL}/{level}/{tile_x}/{tile_y}"
+        tile_urls.append(tile_url)
+    
+    logger.info(f"Fetching {len(tile_urls)} tiles:")
+    for i, url in enumerate(tile_urls, 1):
+        logger.info(f"  {i}. {url}")
+    
     # Fetch and place each tile
     for level, tile_x, tile_y in tiles:
         try:
