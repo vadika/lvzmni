@@ -322,66 +322,51 @@ def composite_tiles_for_wgs84(x, y, z):
             logger.error(f"Error processing tile {tile_x}/{tile_y}: {str(e)}")
             continue
     
-    # Calculate the WGS84 tile area in LKS-92 coordinates
-    wgs84_width_lks92 = abs(wgs84_se_x - wgs84_nw_x)
-    wgs84_height_lks92 = abs(wgs84_nw_y - wgs84_se_y)
-    
-    # Calculate how many pixels the WGS84 area should occupy
+    # Calculate exact pixel coordinates for the WGS84 tile area on the composite canvas
     pixels_per_meter_x = 512 / tile_width_meters
     pixels_per_meter_y = 512 / tile_height_meters
     
-    wgs84_width_pixels = wgs84_width_lks92 * pixels_per_meter_x
-    wgs84_height_pixels = wgs84_height_lks92 * pixels_per_meter_y
+    # Calculate the exact crop area for this WGS84 tile (no centering, exact boundaries)
+    crop_left = (wgs84_nw_x - composite_xmin) * pixels_per_meter_x
+    crop_right = (wgs84_se_x - composite_xmin) * pixels_per_meter_x
+    crop_top = (composite_ymax - wgs84_nw_y) * pixels_per_meter_y
+    crop_bottom = (composite_ymax - wgs84_se_y) * pixels_per_meter_y
     
-    logger.info(f"WGS84 area size: {wgs84_width_lks92:.2f}m x {wgs84_height_lks92:.2f}m")
+    # Calculate the actual pixel dimensions of the WGS84 area
+    wgs84_width_pixels = crop_right - crop_left
+    wgs84_height_pixels = crop_bottom - crop_top
+    
+    logger.info(f"WGS84 area in LKS-92: NW({wgs84_nw_x:.2f}, {wgs84_nw_y:.2f}) SE({wgs84_se_x:.2f}, {wgs84_se_y:.2f})")
+    logger.info(f"Composite area: ({composite_xmin:.2f}, {composite_ymin:.2f}) to ({composite_xmax:.2f}, {composite_ymax:.2f})")
     logger.info(f"WGS84 area in pixels: {wgs84_width_pixels:.1f} x {wgs84_height_pixels:.1f}")
+    logger.info(f"Exact crop coordinates: ({crop_left:.1f}, {crop_top:.1f}) to ({crop_right:.1f}, {crop_bottom:.1f})")
     
-    # Calculate the center of the WGS84 area in the composite
-    wgs84_center_x = (wgs84_nw_x + wgs84_se_x) / 2
-    wgs84_center_y = (wgs84_nw_y + wgs84_se_y) / 2
-    
-    # Find the center position on the canvas
-    center_x_pixels = (wgs84_center_x - composite_xmin) * pixels_per_meter_x
-    center_y_pixels = (composite_ymax - wgs84_center_y) * pixels_per_meter_y
-    
-    # Create a 256x256 crop centered on the WGS84 area
-    crop_size = 256
-    crop_left = int(center_x_pixels - crop_size / 2)
-    crop_right = crop_left + crop_size
-    crop_top = int(center_y_pixels - crop_size / 2)
-    crop_bottom = crop_top + crop_size
+    # Convert to integer pixel coordinates
+    crop_left = int(round(crop_left))
+    crop_right = int(round(crop_right))
+    crop_top = int(round(crop_top))
+    crop_bottom = int(round(crop_bottom))
     
     # Ensure crop coordinates are within canvas bounds
-    if crop_left < 0:
-        crop_right -= crop_left
-        crop_left = 0
-    if crop_top < 0:
-        crop_bottom -= crop_top
-        crop_top = 0
-    if crop_right > canvas_width:
-        crop_left -= (crop_right - canvas_width)
-        crop_right = canvas_width
-    if crop_bottom > canvas_height:
-        crop_top -= (crop_bottom - canvas_height)
-        crop_bottom = canvas_height
+    crop_left = max(0, min(canvas_width, crop_left))
+    crop_right = max(crop_left, min(canvas_width, crop_right))
+    crop_top = max(0, min(canvas_height, crop_top))
+    crop_bottom = max(crop_top, min(canvas_height, crop_bottom))
     
-    # Final bounds check
-    crop_left = max(0, crop_left)
-    crop_right = min(canvas_width, max(crop_left + 1, crop_right))
-    crop_top = max(0, crop_top)
-    crop_bottom = min(canvas_height, max(crop_top + 1, crop_bottom))
+    # Ensure we have a valid crop area
+    if crop_right <= crop_left or crop_bottom <= crop_top:
+        logger.warning(f"Invalid crop area: ({crop_left}, {crop_top}) to ({crop_right}, {crop_bottom})")
+        # Return empty tile
+        empty_img = Image.new('RGBA', (256, 256), (0, 0, 0, 0))
+        return empty_img
     
-    logger.info(f"WGS84 center in LKS-92: ({wgs84_center_x:.2f}, {wgs84_center_y:.2f})")
-    logger.info(f"Center on canvas: ({center_x_pixels:.1f}, {center_y_pixels:.1f})")
-    logger.info(f"Cropping 256x256 area from ({crop_left}, {crop_top}) to ({crop_right}, {crop_bottom})")
+    logger.info(f"Final crop coordinates: ({crop_left}, {crop_top}) to ({crop_right}, {crop_bottom})")
     
-    # Crop the final area
+    # Crop the exact WGS84 area
     final_img = canvas.crop((crop_left, crop_top, crop_right, crop_bottom))
     
-    # Ensure the result is exactly 256x256
-    if final_img.size != (256, 256):
-        logger.info(f"Resizing from {final_img.size} to (256, 256)")
-        final_img = final_img.resize((256, 256), Image.LANCZOS)
+    # Always resize to exactly 256x256 (this is the standard for WGS84 tiles)
+    final_img = final_img.resize((256, 256), Image.LANCZOS)
     
     return final_img
 
