@@ -275,17 +275,25 @@ def composite_tiles_for_wgs84(x, y, z):
     min_tile_y = min(tile[2] for tile in tiles)
     max_tile_y = max(tile[2] for tile in tiles)
     
-    # Calculate the composite area bounds in LKS-92
-    composite_xmin = LKS92_EXTENT["xmin"] + (min_tile_x - ranges["x_min"]) * tile_width_meters
-    composite_xmax = LKS92_EXTENT["xmin"] + (max_tile_x - ranges["x_min"] + 1) * tile_width_meters
-    composite_ymax = LKS92_EXTENT["ymax"] - (min_tile_y - ranges["y_min"]) * tile_height_meters
-    composite_ymin = LKS92_EXTENT["ymax"] - (max_tile_y - ranges["y_min"] + 1) * tile_height_meters
+    # Calculate the composite area bounds in LKS-92 based on actual tile bounds
+    first_tile_bounds = get_lks92_tile_bounds(level, min_tile_x, min_tile_y)
+    last_tile_bounds = get_lks92_tile_bounds(level, max_tile_x, max_tile_y)
+    
+    if not first_tile_bounds or not last_tile_bounds:
+        logger.error("Could not get tile bounds for composite calculation")
+        return None
+    
+    composite_xmin = first_tile_bounds["xmin"]
+    composite_xmax = last_tile_bounds["xmax"]
+    composite_ymin = last_tile_bounds["ymin"]
+    composite_ymax = first_tile_bounds["ymax"]
     
     # Calculate canvas size (each LKS-92 tile is 512x512 pixels)
     canvas_width = (max_tile_x - min_tile_x + 1) * 512
     canvas_height = (max_tile_y - min_tile_y + 1) * 512
     
     logger.info(f"Canvas size: {canvas_width}x{canvas_height} for tiles {min_tile_x}-{max_tile_x}, {min_tile_y}-{max_tile_y}")
+    logger.info(f"Composite bounds: ({composite_xmin:.2f}, {composite_ymin:.2f}) to ({composite_xmax:.2f}, {composite_ymax:.2f})")
     
     # Create the composite canvas
     canvas = Image.new('RGBA', (canvas_width, canvas_height), (0, 0, 0, 0))
@@ -293,7 +301,7 @@ def composite_tiles_for_wgs84(x, y, z):
     # Log all tile URLs that will be fetched
     tile_urls = []
     for level, tile_x, tile_y in tiles:
-        tile_url = f"{BASE_URL}/{level}/{tile_x}/{tile_y}"
+        tile_url = f"{BASE_URL}{level}/{tile_x}/{tile_y}"
         tile_urls.append(tile_url)
     
     logger.info(f"Fetching {len(tile_urls)} tiles:")
@@ -303,18 +311,25 @@ def composite_tiles_for_wgs84(x, y, z):
     # Fetch and place each tile
     for level, tile_x, tile_y in tiles:
         try:
-            tile_url = f"{BASE_URL}/{level}/{tile_x}/{tile_y}"
+            tile_url = f"{BASE_URL}{level}/{tile_x}/{tile_y}"
             response = requests.get(tile_url, timeout=10)
             
             if response.status_code == 200:
-                # Calculate where this tile should be placed on the canvas
+                # Calculate where this tile should be placed on the canvas (simple grid placement)
                 x_offset = (tile_x - min_tile_x) * 512
                 y_offset = (tile_y - min_tile_y) * 512
+                
+                logger.info(f"Placing tile {tile_x}/{tile_y} at grid offset ({x_offset}, {y_offset})")
+                
+                # Verify offsets are positive
+                if x_offset < 0 or y_offset < 0:
+                    logger.error(f"Negative offset detected: ({x_offset}, {y_offset}) for tile {tile_x}/{tile_y}")
+                    continue
                 
                 # Open and paste the tile
                 tile_img = Image.open(io.BytesIO(response.content))
                 canvas.paste(tile_img, (x_offset, y_offset))
-                logger.info(f"Placed tile {tile_x}/{tile_y} at offset ({x_offset}, {y_offset})")
+                logger.info(f"Successfully placed tile {tile_x}/{tile_y}")
             else:
                 logger.warning(f"Failed to fetch tile {tile_x}/{tile_y}: {response.status_code}")
                 
