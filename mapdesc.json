@@ -1,0 +1,299 @@
+{
+  "currentVersion": 10.61,
+  "serviceDescription": "ZMNI meliorācijas datu serviss",
+  "mapName": "Layers",
+  "description": "",
+  "copyrightText": "",
+  "supportsDynamicLayers": false,
+  "layers": [
+    {
+      "id": 0,
+      "name": "Polderu sūkņu stacijas",
+      "parentLayerId": -1,
+      "defaultVisibility": true,
+      "subLayerIds": null,
+      "minScale": 150000,
+      "maxScale": 0
+    },
+    {
+      "id": 1,
+      "name": "Aizsargdambju piketi",
+      "parentLayerId": -1,
+      "defaultVisibility": true,
+      "subLayerIds": null,
+      "minScale": 12000,
+      "maxScale": 0
+    },
+    {
+      "id": 2,
+      "name": "Valsts nozīmes ūdensnoteku piketi",
+      "parentLayerId": -1,
+      "defaultVisibility": true,
+      "subLayerIds": null,
+      "minScale": 12000,
+      "maxScale": 0
+    },
+    {
+      "id": 3,
+      "name": "Ūdensnoteku un grāvju piketi",
+      "parentLayerId": -1,
+      "defaultVisibility": true,
+      "subLayerIds": null,
+      "minScale": 12000,
+      "maxScale": 0
+    },
+    {
+      "id": 4,
+      "name": "Drenāžas tīkla būves",
+      "parentLayerId": -1,
+      "defaultVisibility": true,
+      "subLayerIds": null,
+      "minScale": 12000,
+      "maxScale": 0
+    },
+    {
+      "id": 5,
+      "name": "Diametru maiņas savienojums",
+      "parentLayerId": -1,
+      "defaultVisibility": true,
+      "subLayerIds": null,
+      "minScale": 12000,
+      "maxScale": 0
+    },
+    {
+      "id": 6,
+      "name": "Valsts nozīmes ūdensnotekas",
+      "parentLayerId": -1,
+      "defaultVisibility": true,
+      "subLayerIds": null,
+      "minScale": 150000,
+      "maxScale": 0
+    },
+    {
+      "id": 7,
+      "name": "Aizsargdambji",
+      "parentLayerId": -1,
+      "defaultVisibility": true,
+      "subLayerIds": null,
+      "minScale": 150000,
+      "maxScale": 0
+    },
+    {
+      "id": 8,
+      "name": "Ūdensteču asis",
+      "parentLayerId": -1,
+      "defaultVisibility": true,
+      "subLayerIds": null,
+      "minScale": 1500000,
+      "maxScale": 0
+    },
+    {
+      "id": 9,
+      "name": "Ūdensteču ūdens virsmas laukumi",
+      "parentLayerId": -1,
+      "defaultVisibility": true,
+      "subLayerIds": null,
+      "minScale": 600000,
+      "maxScale": 0
+    },
+    {
+      "id": 10,
+      "name": "Grāvji, drenas, kolektori",
+      "parentLayerId": -1,
+      "defaultVisibility": true,
+      "subLayerIds": [11, 12, 13, 14],
+      "minScale": 55000,
+      "maxScale": 0
+    },
+    {
+      "id": 11,
+      "name": "Grāvji",
+      "parentLayerId": 10,
+      "defaultVisibility": true,
+      "subLayerIds": null,
+      "minScale": 55000,
+      "maxScale": 0
+    },
+    {
+      "id": 12,
+      "name": "Lielie drenu kolektori",
+      "parentLayerId": 10,
+      "defaultVisibility": true,
+      "subLayerIds": null,
+      "minScale": 35000,
+      "maxScale": 0
+    },
+    {
+      "id": 13,
+      "name": "Drenu kolektori",
+      "parentLayerId": 10,
+      "defaultVisibility": true,
+      "subLayerIds": null,
+      "minScale": 35000,
+      "maxScale": 0
+    },
+    {
+      "id": 14,
+      "name": "Drenas",
+      "parentLayerId": 10,
+      "defaultVisibility": true,
+      "subLayerIds": null,
+      "minScale": 12000,
+      "maxScale": 0
+    },
+    {
+      "id": 15,
+      "name": "Polderu teritorijas",
+      "parentLayerId": -1,
+      "defaultVisibility": true,
+      "subLayerIds": null,
+      "minScale": 200000,
+      "maxScale": 0
+    },
+    {
+      "id": 16,
+      "name": "Sateces baseini",
+      "parentLayerId": -1,
+      "defaultVisibility": true,
+      "subLayerIds": null,
+      "minScale": 150000,
+      "maxScale": 45001
+    }
+  ],
+  "tables": [],
+  "spatialReference": {
+    "wkid": 3059,
+    "latestWkid": 3059
+  },
+  "singleFusedMapCache": true,
+  "tileInfo": {
+    "rows": 512,
+    "cols": 512,
+    "dpi": 96,
+    "format": "PNG",
+    "compressionQuality": 0,
+    "origin": {
+      "x": -5120900,
+      "y": 3998100
+    },
+    "spatialReference": {
+      "wkid": 3059,
+      "latestWkid": 3059
+    },
+    "lods": [
+      {
+        "level": 0,
+        "resolution": 1058.33545000423,
+        "scale": 4000000
+      },
+      {
+        "level": 1,
+        "resolution": 529.167725002117,
+        "scale": 2000000
+      },
+      {
+        "level": 2,
+        "resolution": 264.583862501058,
+        "scale": 1000000
+      },
+      {
+        "level": 3,
+        "resolution": 132.291931250529,
+        "scale": 500000
+      },
+      {
+        "level": 4,
+        "resolution": 52.9167725002117,
+        "scale": 200000
+      },
+      {
+        "level": 5,
+        "resolution": 26.4583862501058,
+        "scale": 100000
+      },
+      {
+        "level": 6,
+        "resolution": 13.2291931250529,
+        "scale": 50000
+      },
+      {
+        "level": 7,
+        "resolution": 10.5833545000423,
+        "scale": 40000
+      },
+      {
+        "level": 8,
+        "resolution": 7.93751587503175,
+        "scale": 30000
+      },
+      {
+        "level": 9,
+        "resolution": 5.29167725002117,
+        "scale": 20000
+      },
+      {
+        "level": 10,
+        "resolution": 3.96875793751588,
+        "scale": 15000
+      },
+      {
+        "level": 11,
+        "resolution": 2.64583862501058,
+        "scale": 10000
+      },
+      {
+        "level": 12,
+        "resolution": 1.32291931250529,
+        "scale": 5000
+      },
+      {
+        "level": 13,
+        "resolution": 0.529167725002117,
+        "scale": 2000
+      }
+    ]
+  },
+  "initialExtent": {
+    "xmin": 652423.056546592,
+    "ymin": 298572.206174899,
+    "xmax": 653144.886295201,
+    "ymax": 299202.57601384,
+    "spatialReference": {
+      "wkid": 3059,
+      "latestWkid": 3059
+    }
+  },
+  "fullExtent": {
+    "xmin": 290000,
+    "ymin": 160000,
+    "xmax": 780000,
+    "ymax": 450000,
+    "spatialReference": {
+      "wkid": 3059,
+      "latestWkid": 3059
+    }
+  },
+  "minScale": 2000000,
+  "maxScale": 2000,
+  "units": "esriMeters",
+  "supportedImageFormatTypes": "PNG32,PNG24,PNG,JPG,DIB,TIFF,EMF,PS,PDF,GIF,SVG,SVGZ,BMP",
+  "documentInfo": {
+    "Title": "ZMNI meliorācijas datu serviss",
+    "Author": "LVM GEO",
+    "Comments": "ZMNI meliorācijas datu serviss",
+    "Subject": "ZMNI meliorācijas datu serviss",
+    "Category": "",
+    "AntialiasingMode": "None",
+    "TextAntialiasingMode": "Force",
+    "Keywords": "Grāvji,Drenas,Meliorācija,ZMNI"
+  },
+  "capabilities": "Map,Query,Data",
+  "supportedQueryFormats": "JSON, AMF, geoJSON",
+  "exportTilesAllowed": false,
+  "supportsDatumTransformation": true,
+  "maxRecordCount": 1000,
+  "maxImageHeight": 4096,
+  "maxImageWidth": 4096,
+  "supportedExtensions": "GeoInfo"
+}
+
